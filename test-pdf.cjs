@@ -11,6 +11,10 @@ const state = {
 };
 const context = vm.createContext({ state, window: { jspdf: { jsPDF } }, Intl });
 vm.runInContext(source.slice(source.indexOf('function money('), source.indexOf('function updateTotals(')) + source.slice(source.indexOf('function dateLabel('), source.indexOf('function renderPdf(')), context);
+assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice INV-2026-001 from Example Studio.pdf');
+state.business.name = 'Example: Studio / NZ';
+assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice INV-2026-001 from Example Studio NZ.pdf');
+state.business.name = 'Example Studio';
 assert.equal(vm.runInContext('totals().total', context), 12550);
 let pdf = vm.runInContext('buildPdf()', context);
 assert.equal(pdf.getNumberOfPages(), 1);

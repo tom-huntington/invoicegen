@@ -93,6 +93,10 @@ $('new-invoice').onclick=()=>{
   for(const [id,[group,key]]of Object.entries(fields))$(id).value=state[group][key];renderItems();renderRecipients();changed();
 };
 function dateLabel(value) {if(!value)return '—';const [y,m,d]=value.split('-');return `${d}/${m}/${y}`;}
+function pdfFileName() {
+  const clean = value => String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'');
+  return `Invoice ${clean(state.invoice.number)} from ${clean(state.business.name)}.pdf`;
+}
 function buildPdf() {
   const doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});const inv=state.invoice;const recipient=state.recipients.find(r=>r.id===inv.recipientId);const green=[23,78,70];const muted=[113,128,119];let y=22;
   doc.setProperties({title:`Invoice ${inv.number}`,author:state.business.name,subject:'Invoice'});
@@ -123,6 +127,6 @@ $('download').onclick=()=>{
   if(!state.invoice.number.trim()||!state.invoice.issueDate){notice('Enter an invoice number and issue date before downloading.');return;}
   if(!state.invoice.items.length||state.invoice.items.some(i=>!i.description.trim()||!Array.isArray(i.dates)||!i.dates.length||i.dates.some(date=>!date)||i.amount===''||!Number.isFinite(Number(i.amount))||Number(i.amount)<0||Number(i.amount)>999999999)){notice('Each line item needs a description, one or more dates, and an amount between 0 and 999,999,999.');return;}
   if(state.invoice.dueDate&&state.invoice.dueDate<state.invoice.issueDate){notice('The due date must be on or after the issue date.');$('due-date').focus();return;}
-  if(storageAvailable)notice('');try{const pdf=buildPdf();pdf.save(`${state.invoice.number.replace(/[^a-z0-9_-]/gi,'_')||'invoice'}.pdf`);}catch(error){notice('The PDF could not be downloaded. Please reload and try again.');console.error(error);}
+  if(storageAvailable)notice('');try{const pdf=buildPdf();pdf.save(pdfFileName());}catch(error){notice('The PDF could not be downloaded. Please reload and try again.');console.error(error);}
 };
 renderRecipients();renderItems();updateTotals();renderPdf();
