@@ -5,7 +5,7 @@ const STORAGE_KEY = 'invoice-studio-v1';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const blankItem = () => ({id:uid(),description:'',date:today(),amount:''});
-const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',currency:'NZD',recipientId:'',items:[blankItem()],taxRate:0,notes:''});
+const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',currency:'NZD',recipientId:'',items:[blankItem()],notes:''});
 let state = {business:{name:'',email:'',address:''},recipients:[],invoice:blankInvoice()};
 let storageAvailable = true;
 function notice(message) { $('notice').textContent=message; $('notice').hidden=!message; }
@@ -13,25 +13,24 @@ try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
   if(saved) {
     if(!saved.business || !Array.isArray(saved.recipients) || !saved.invoice || !Array.isArray(saved.invoice.items)) throw new Error('Invalid saved data');
-    state={business:{...state.business,...saved.business},recipients:saved.recipients,invoice:{...state.invoice,...saved.invoice}};
+    const {taxRate, ...savedInvoice}=saved.invoice;
+    state={business:{...state.business,...saved.business},recipients:saved.recipients,invoice:{...state.invoice,...savedInvoice}};
   }
 } catch { storageAvailable=false; notice('Saved data could not be loaded. You can still create and download an invoice, but this session may not be saved.'); }
 function save() {
   try { localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); storageAvailable=true; $('save-state').textContent='Draft saved'; }
   catch { storageAvailable=false; $('save-state').textContent='Not saved'; notice('Browser storage is unavailable or full. Download your PDF before closing this page.'); }
 }
-const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'invoice-number':['invoice','number'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'currency':['invoice','currency'],'tax-rate':['invoice','taxRate'],'notes':['invoice','notes']};
+const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'invoice-number':['invoice','number'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'currency':['invoice','currency'],'notes':['invoice','notes']};
 for(const [id,[group,key]] of Object.entries(fields)) {
   $(id).value=state[group][key];
   $(id).addEventListener('input',()=>{state[group][key]=$(id).value; changed();});
 }
 function money(cents) { return new Intl.NumberFormat('en',{style:'currency',currency:state.invoice.currency}).format(cents/100); }
 function totals() {
-  const subtotal=state.invoice.items.reduce((sum,item)=>sum+Math.round((Number(item.amount)||0)*100),0);
-  const tax=Math.round(subtotal*(Math.min(100,Math.max(0,Number(state.invoice.taxRate)||0)))/100);
-  return {subtotal,tax,total:subtotal+tax};
+  return {total:state.invoice.items.reduce((sum,item)=>sum+Math.round((Number(item.amount)||0)*100),0)};
 }
-function updateTotals() { const t=totals(); $('subtotal').textContent=money(t.subtotal); $('tax-total').textContent=money(t.tax); $('grand-total').textContent=money(t.total); }
+function updateTotals() { $('grand-total').textContent=money(totals().total); }
 let previewTimer, pdfUrl, currentPdf;
 function changed() { save(); updateTotals(); clearTimeout(previewTimer); previewTimer=setTimeout(renderPdf,250); }
 function renderRecipients() {
@@ -56,7 +55,7 @@ function renderItems() {
   $('items').replaceChildren();
   state.invoice.items.forEach((item,index)=>{
     const row=document.createElement('div');row.className='item-row';
-    for(const [key,title,type] of [['description','Description','text'],['date','Date','date'],['amount','Amount','number']]) {
+    for(const [key,title,type] of [['description','Description','text'],['date','Date','date'],['amount','Final amount','number']]) {
       const label=document.createElement('label');label.textContent=title;const input=document.createElement('input');input.type=type;input.value=item[key];input.setAttribute('aria-label',`${title}, item ${index+1}`);
       if(key==='amount'){input.step='0.01';input.min='0';input.max='999999999';input.placeholder='0.00';}
       if(key==='description'){input.placeholder='e.g. Design services';input.maxLength=4000;}
@@ -78,7 +77,7 @@ $('delete-recipient').onclick=()=>{if(!confirm('Delete this recipient from this 
 $('add-item').onclick=()=>{state.invoice.items.push(blankItem());renderItems();changed();$('items').lastElementChild.querySelector('input').focus();};
 $('new-invoice').onclick=()=>{
   if(!confirm('Start a new invoice? This replaces the current draft. Download it first if you want to keep it.'))return;
-  const old=state.invoice;const match=old.number.match(/^(.*?)(\d+)$/);state.invoice=blankInvoice();state.invoice.currency=old.currency;state.invoice.taxRate=old.taxRate;state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
+  const old=state.invoice;const match=old.number.match(/^(.*?)(\d+)$/);state.invoice=blankInvoice();state.invoice.currency=old.currency;state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
   if(match)state.invoice.number=match[1]+String(Number(match[2])+1).padStart(match[2].length,'0');
   for(const [id,[group,key]]of Object.entries(fields))$(id).value=state[group][key];renderItems();renderRecipients();changed();
 };
@@ -99,7 +98,7 @@ function buildPdf() {
     for(const line of description){if(y+8>272){doc.addPage();y=23;tableHeader();}text(line,24,y,10);if(first){text(dateLabel(item.date),132,y,9,muted);doc.setFontSize(9);doc.setTextColor(...green);doc.text(money(Math.round((Number(item.amount)||0)*100)),186,y,{align:'right'});first=false;}y+=5;}
     y+=5;doc.setDrawColor(227,232,226);doc.line(20,y-3,190,y-3);y+=4;
   }
-  room(45);y+=4;const t=totals();for(const [label,value,bold] of [['Subtotal',t.subtotal,false],[`Tax (${Number(inv.taxRate)||0}%)`,t.tax,false],['Total due',t.total,true]]){if(bold){doc.setFillColor(238,245,239);doc.rect(112,y-6,78,12,'F');}text(label,116,y,bold?11:10,green,bold);doc.setFontSize(bold?12:10);doc.text(money(value),186,y,{align:'right'});y+=11;}
+  room(20);y+=4;const t=totals();doc.setFillColor(238,245,239);doc.rect(112,y-6,78,12,'F');text('Total due',116,y,11,green,true);doc.setFontSize(12);doc.text(money(t.total),186,y,{align:'right'});y+=11;
   if(inv.notes.trim()){y+=10;room(16);text('NOTES & PAYMENT DETAILS',20,y,8,muted,true);y+=8;lines(inv.notes,20,165,10);}
   const pages=doc.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setDrawColor(227,232,226);doc.line(20,282,190,282);text('Thank you for your business.',20,289,8,muted);text(`${i} / ${pages}`,180,289,8,muted);}return doc;
 }
@@ -112,7 +111,6 @@ $('download').onclick=()=>{
   if(!state.recipients.some(r=>r.id===state.invoice.recipientId)){notice('Select or add a recipient before downloading.');$('add-recipient').focus();return;}
   if(!state.invoice.number.trim()||!state.invoice.issueDate){notice('Enter an invoice number and issue date before downloading.');return;}
   if(!state.invoice.items.length||state.invoice.items.some(i=>!i.description.trim()||!i.date||i.amount===''||!Number.isFinite(Number(i.amount))||Number(i.amount)<0||Number(i.amount)>999999999)){notice('Each line item needs a description, date, and amount between 0 and 999,999,999.');return;}
-  const rate=Number(state.invoice.taxRate);if(!Number.isFinite(rate)||rate<0||rate>100){notice('Tax rate must be between 0 and 100.');$('tax-rate').focus();return;}
   if(state.invoice.dueDate&&state.invoice.dueDate<state.invoice.issueDate){notice('The due date must be on or after the issue date.');$('due-date').focus();return;}
   if(storageAvailable)notice('');try{const pdf=buildPdf();pdf.save(`${state.invoice.number.replace(/[^a-z0-9_-]/gi,'_')||'invoice'}.pdf`);}catch(error){notice('The PDF could not be downloaded. Please reload and try again.');console.error(error);}
 };
