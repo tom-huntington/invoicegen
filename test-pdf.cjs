@@ -7,13 +7,13 @@ const source = fs.readFileSync('app.js', 'utf8');
 const state = {
   business: { name: 'Example Studio', email: 'hello@example.com', address: '123 Sample Street' },
   recipients: [{ id: 'client', name: 'Example Client', email: 'client@example.com', address: '456 Client Street' }],
-  invoice: { number: 'INV-2026-001', recipientId: 'client', issueDate: '2026-09-22', dueDate: '2026-10-06', taxRate: 15, notes: 'Please pay by bank transfer.', items: [{ description: 'Design work', date: '2026-09-22', amount: '125.50' }] }
+  invoice: { recipientId: 'client', issueDate: '2026-09-22', dueDate: '2026-10-06', taxRate: 15, notes: 'Please pay by bank transfer.', items: [{ description: 'Design work', date: '2026-09-22', amount: '125.50' }] }
 };
 const context = vm.createContext({ state, window: { jspdf: { jsPDF } }, Intl });
 vm.runInContext(source.slice(source.indexOf('function money('), source.indexOf('function updateTotals(')) + source.slice(source.indexOf('function dateLabel('), source.indexOf('function renderPdf(')), context);
-assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice INV-2026-001 from Example Studio.pdf');
+assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice 2026-09-22 from Example Studio.pdf');
 state.business.name = 'Example: Studio / NZ';
-assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice INV-2026-001 from Example Studio NZ.pdf');
+assert.equal(vm.runInContext('pdfFileName()', context), 'Invoice 2026-09-22 from Example Studio NZ.pdf');
 state.business.name = 'Example Studio';
 assert.equal(vm.runInContext('totals().total', context), 12550);
 let pdf = vm.runInContext('buildPdf()', context);

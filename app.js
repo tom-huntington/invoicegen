@@ -5,7 +5,7 @@ const STORAGE_KEY = 'invoice-studio-v1';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const blankItem = () => ({id:uid(),description:'',dates:[today()],amount:''});
-const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',recipientId:'',items:[blankItem()],notes:''});
+const blankInvoice = () => ({issueDate:today(),dueDate:'',recipientId:'',items:[blankItem()],notes:''});
 let state = {business:{name:'',email:'',address:''},recipients:[],invoice:blankInvoice()};
 let storageAvailable = true;
 function notice(message) { $('notice').textContent=message; $('notice').hidden=!message; }
@@ -13,7 +13,7 @@ try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
   if(saved) {
     if(!saved.business || !Array.isArray(saved.recipients) || !saved.invoice || !Array.isArray(saved.invoice.items)) throw new Error('Invalid saved data');
-    const {taxRate, currency, ...savedInvoice}=saved.invoice;
+    const {taxRate, currency, number, ...savedInvoice}=saved.invoice;
     state={business:{...state.business,...saved.business},recipients:saved.recipients,invoice:{...state.invoice,...savedInvoice}};
     state.invoice.items=state.invoice.items.map(item=>{const {date,...rest}=item;return {...rest,dates:Array.isArray(item.dates)&&item.dates.length?item.dates:[date||'']};});
   }
@@ -22,7 +22,7 @@ function save() {
   try { localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); storageAvailable=true; $('save-state').textContent='Draft saved'; }
   catch { storageAvailable=false; $('save-state').textContent='Not saved'; notice('Browser storage is unavailable or full. Download your PDF before closing this page.'); }
 }
-const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'invoice-number':['invoice','number'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'notes':['invoice','notes']};
+const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'notes':['invoice','notes']};
 for(const [id,[group,key]] of Object.entries(fields)) {
   $(id).value=state[group][key];
   $(id).addEventListener('input',()=>{state[group][key]=$(id).value; changed();});
@@ -88,22 +88,21 @@ $('delete-recipient').onclick=()=>{if(!confirm('Delete this recipient from this 
 $('add-item').onclick=()=>{state.invoice.items.push(blankItem());renderItems();changed();$('items').lastElementChild.querySelector('input').focus();};
 $('new-invoice').onclick=()=>{
   if(!confirm('Start a new invoice? This replaces the current draft. Download it first if you want to keep it.'))return;
-  const old=state.invoice;const match=old.number.match(/^(.*?)(\d+)$/);state.invoice=blankInvoice();state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
-  if(match)state.invoice.number=match[1]+String(Number(match[2])+1).padStart(match[2].length,'0');
+  const old=state.invoice;state.invoice=blankInvoice();state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
   for(const [id,[group,key]]of Object.entries(fields))$(id).value=state[group][key];renderItems();renderRecipients();changed();
 };
 function dateLabel(value) {if(!value)return '—';const [y,m,d]=value.split('-');return `${d}/${m}/${y}`;}
 function pdfFileName() {
   const clean = value => String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'');
-  return `Invoice ${clean(state.invoice.number)} from ${clean(state.business.name)}.pdf`;
+  return `Invoice ${clean(state.invoice.issueDate)} from ${clean(state.business.name)}.pdf`;
 }
 function buildPdf() {
   const doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});const inv=state.invoice;const recipient=state.recipients.find(r=>r.id===inv.recipientId);const green=[23,78,70];const muted=[113,128,119];let y=22;
-  doc.setProperties({title:`Invoice ${inv.number}`,author:state.business.name,subject:'Invoice'});
+  doc.setProperties({title:`Invoice ${inv.issueDate}`,author:state.business.name,subject:'Invoice'});
   function text(value,x,at,size=10,color=[48,65,56],bold=false){doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(...color);doc.text(String(value),x,at);}
   function room(height){if(y+height>275){doc.addPage();y=23;}}
   function lines(value,x,width,size=10,color=muted){doc.setFont('helvetica','normal');doc.setFontSize(size);for(const line of doc.splitTextToSize(String(value||''),width)){room(6);text(line,x,y,size,color);y+=5;} }
-  text('INVOICE',20,y,28,green,true);y+=10;lines(inv.number||'Invoice number',20,170,10);y+=7;
+  text('INVOICE',20,y,28,green,true);y+=17;
   text('FROM',20,y,8,muted,true);y+=7;lines(state.business.name||'Your business name',20,170,13,green);lines(state.business.email,20,170,9);lines(state.business.address,20,170,9);y+=8;
   room(30);text('BILL TO',20,y,8,muted,true);text('ISSUED',126,y,8,muted,true);text('DUE',164,y,8,muted,true);text(dateLabel(inv.issueDate),126,y+7,9);text(dateLabel(inv.dueDate),164,y+7,9);y+=7;
   lines(recipient?.name||'Recipient name',20,95,12,green);lines(recipient?.email,20,95,9);lines(recipient?.address,20,95,9);y+=10;
@@ -124,7 +123,7 @@ function renderPdf(){
 $('download').onclick=()=>{
   if(!state.business.name.trim()){notice('Add your business name before downloading.');$('business-name').focus();return;}
   if(!state.recipients.some(r=>r.id===state.invoice.recipientId)){notice('Select or add a recipient before downloading.');$('add-recipient').focus();return;}
-  if(!state.invoice.number.trim()||!state.invoice.issueDate){notice('Enter an invoice number and issue date before downloading.');return;}
+  if(!state.invoice.issueDate){notice('Enter an issue date before downloading.');$('issue-date').focus();return;}
   if(!state.invoice.items.length||state.invoice.items.some(i=>!i.description.trim()||!Array.isArray(i.dates)||!i.dates.length||i.dates.some(date=>!date)||i.amount===''||!Number.isFinite(Number(i.amount))||Number(i.amount)<0||Number(i.amount)>999999999)){notice('Each line item needs a description, one or more dates, and an amount between 0 and 999,999,999.');return;}
   if(state.invoice.dueDate&&state.invoice.dueDate<state.invoice.issueDate){notice('The due date must be on or after the issue date.');$('due-date').focus();return;}
   if(storageAvailable)notice('');try{const pdf=buildPdf();pdf.save(pdfFileName());}catch(error){notice('The PDF could not be downloaded. Please reload and try again.');console.error(error);}
