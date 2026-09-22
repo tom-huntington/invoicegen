@@ -3,7 +3,7 @@
 A static, client-side invoice generator. Open `index.html` in a modern browser, or serve this folder with any static web host. No build step or backend is required.
 
 - Save business details and reusable recipients in localStorage.
-- Select a recipient, add dated line items with final amounts, choose a currency, and optionally add payment notes.
+- Select a recipient, add dated line items with final amounts in NZD, and optionally add payment notes.
 - Preview the actual PDF while editing, including automatic page breaks.
 - Download the invoice as a PDF using the browser's download location or Save As dialog.
 - Keep the current draft across reloads. Starting a new invoice increments the invoice number and retains business details and payment preferences.

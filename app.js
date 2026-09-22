@@ -5,7 +5,7 @@ const STORAGE_KEY = 'invoice-studio-v1';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const blankItem = () => ({id:uid(),description:'',date:today(),amount:''});
-const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',currency:'NZD',recipientId:'',items:[blankItem()],notes:''});
+const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',recipientId:'',items:[blankItem()],notes:''});
 let state = {business:{name:'',email:'',address:''},recipients:[],invoice:blankInvoice()};
 let storageAvailable = true;
 function notice(message) { $('notice').textContent=message; $('notice').hidden=!message; }
@@ -13,7 +13,7 @@ try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
   if(saved) {
     if(!saved.business || !Array.isArray(saved.recipients) || !saved.invoice || !Array.isArray(saved.invoice.items)) throw new Error('Invalid saved data');
-    const {taxRate, ...savedInvoice}=saved.invoice;
+    const {taxRate, currency, ...savedInvoice}=saved.invoice;
     state={business:{...state.business,...saved.business},recipients:saved.recipients,invoice:{...state.invoice,...savedInvoice}};
   }
 } catch { storageAvailable=false; notice('Saved data could not be loaded. You can still create and download an invoice, but this session may not be saved.'); }
@@ -21,12 +21,12 @@ function save() {
   try { localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); storageAvailable=true; $('save-state').textContent='Draft saved'; }
   catch { storageAvailable=false; $('save-state').textContent='Not saved'; notice('Browser storage is unavailable or full. Download your PDF before closing this page.'); }
 }
-const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'invoice-number':['invoice','number'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'currency':['invoice','currency'],'notes':['invoice','notes']};
+const fields = {'business-name':['business','name'],'business-email':['business','email'],'business-address':['business','address'],'invoice-number':['invoice','number'],'issue-date':['invoice','issueDate'],'due-date':['invoice','dueDate'],'notes':['invoice','notes']};
 for(const [id,[group,key]] of Object.entries(fields)) {
   $(id).value=state[group][key];
   $(id).addEventListener('input',()=>{state[group][key]=$(id).value; changed();});
 }
-function money(cents) { return new Intl.NumberFormat('en',{style:'currency',currency:state.invoice.currency}).format(cents/100); }
+function money(cents) { return new Intl.NumberFormat('en-NZ',{style:'currency',currency:'NZD'}).format(cents/100); }
 function totals() {
   return {total:state.invoice.items.reduce((sum,item)=>sum+Math.round((Number(item.amount)||0)*100),0)};
 }
@@ -77,7 +77,7 @@ $('delete-recipient').onclick=()=>{if(!confirm('Delete this recipient from this 
 $('add-item').onclick=()=>{state.invoice.items.push(blankItem());renderItems();changed();$('items').lastElementChild.querySelector('input').focus();};
 $('new-invoice').onclick=()=>{
   if(!confirm('Start a new invoice? This replaces the current draft. Download it first if you want to keep it.'))return;
-  const old=state.invoice;const match=old.number.match(/^(.*?)(\d+)$/);state.invoice=blankInvoice();state.invoice.currency=old.currency;state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
+  const old=state.invoice;const match=old.number.match(/^(.*?)(\d+)$/);state.invoice=blankInvoice();state.invoice.notes=old.notes;state.invoice.recipientId=old.recipientId;
   if(match)state.invoice.number=match[1]+String(Number(match[2])+1).padStart(match[2].length,'0');
   for(const [id,[group,key]]of Object.entries(fields))$(id).value=state[group][key];renderItems();renderRecipients();changed();
 };
@@ -92,7 +92,7 @@ function buildPdf() {
   text('FROM',20,y,8,muted,true);y+=7;lines(state.business.name||'Your business name',20,170,13,green);lines(state.business.email,20,170,9);lines(state.business.address,20,170,9);y+=8;
   room(30);text('BILL TO',20,y,8,muted,true);text('ISSUED',126,y,8,muted,true);text('DUE',164,y,8,muted,true);text(dateLabel(inv.issueDate),126,y+7,9);text(dateLabel(inv.dueDate),164,y+7,9);y+=7;
   lines(recipient?.name||'Recipient name',20,95,12,green);lines(recipient?.email,20,95,9);lines(recipient?.address,20,95,9);y+=10;
-  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATE',132,y+6.5,8,[255,255,255],true);text(`AMOUNT (${inv.currency})`,158,y+6.5,8,[255,255,255],true);y+=17;}
+  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATE',132,y+6.5,8,[255,255,255],true);text('AMOUNT',158,y+6.5,8,[255,255,255],true);y+=17;}
   tableHeader();
   for(const item of inv.items){doc.setFontSize(10);doc.setFont('helvetica','normal');const description=doc.splitTextToSize(item.description||'Item description',100);let first=true;
     for(const line of description){if(y+8>272){doc.addPage();y=23;tableHeader();}text(line,24,y,10);if(first){text(dateLabel(item.date),132,y,9,muted);doc.setFontSize(9);doc.setTextColor(...green);doc.text(money(Math.round((Number(item.amount)||0)*100)),186,y,{align:'right'});first=false;}y+=5;}

@@ -7,7 +7,7 @@ const source = fs.readFileSync('app.js', 'utf8');
 const state = {
   business: { name: 'Example Studio', email: 'hello@example.com', address: '123 Sample Street' },
   recipients: [{ id: 'client', name: 'Example Client', email: 'client@example.com', address: '456 Client Street' }],
-  invoice: { number: 'INV-2026-001', recipientId: 'client', currency: 'NZD', issueDate: '2026-09-22', dueDate: '2026-10-06', taxRate: 15, notes: 'Please pay by bank transfer.', items: [{ description: 'Design work', date: '2026-09-22', amount: '125.50' }] }
+  invoice: { number: 'INV-2026-001', recipientId: 'client', issueDate: '2026-09-22', dueDate: '2026-10-06', taxRate: 15, notes: 'Please pay by bank transfer.', items: [{ description: 'Design work', date: '2026-09-22', amount: '125.50' }] }
 };
 const context = vm.createContext({ state, window: { jspdf: { jsPDF } }, Intl });
 vm.runInContext(source.slice(source.indexOf('function money('), source.indexOf('function updateTotals(')) + source.slice(source.indexOf('function dateLabel('), source.indexOf('function renderPdf(')), context);
@@ -18,6 +18,9 @@ assert.ok(pdf.output().startsWith('%PDF-'));
 assert.ok(pdf.output().includes('Example Client'));
 assert.ok(pdf.output().includes('Design work'));
 assert.ok(pdf.output().includes('Total due'));
+assert.ok(pdf.output().includes('$125.50'));
+assert.ok(!pdf.output().includes('NZ$'));
+assert.ok(!pdf.output().includes('AMOUNT (NZD)'));
 assert.ok(!pdf.output().includes('Tax ('));
 assert.ok(!pdf.output().includes('Subtotal'));
 state.invoice.items = Array.from({ length: 100 }, (_, i) => ({ description: `Service ${i + 1}: ` + 'Detailed work description. '.repeat(6), date: '2026-09-22', amount: '10.01' }));
