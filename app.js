@@ -103,7 +103,7 @@ function buildPdf() {
   text('FROM',20,y,8,muted,true);y+=7;lines(state.business.name||'Your business name',20,170,13,green);lines(state.business.email,20,170,9);lines(state.business.address,20,170,9);y+=8;
   room(30);text('BILL TO',20,y,8,muted,true);text('ISSUED',126,y,8,muted,true);text('DUE',164,y,8,muted,true);text(dateLabel(inv.issueDate),126,y+7,9);text(dateLabel(inv.dueDate),164,y+7,9);y+=7;
   lines(recipient?.name||'Recipient name',20,95,12,green);lines(recipient?.email,20,95,9);lines(recipient?.address,20,95,9);y+=10;
-  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATES',132,y+6.5,8,[255,255,255],true);text('AMOUNT',158,y+6.5,8,[255,255,255],true);y+=17;}
+  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATES',132,y+6.5,8,[255,255,255],true);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);doc.text('AMOUNT',186,y+6.5,{align:'right'});y+=17;}
   tableHeader();
   for(const item of inv.items){doc.setFontSize(10);doc.setFont('helvetica','normal');const description=doc.splitTextToSize(item.description||'Item description',100);const dates=item.dates||[item.date||''];const rowLines=Math.max(description.length,dates.length);
     for(let lineIndex=0;lineIndex<rowLines;lineIndex++){if(y+8>272){doc.addPage();y=23;tableHeader();}if(description[lineIndex])text(description[lineIndex],24,y,10);if(dates[lineIndex])text(dateLabel(dates[lineIndex]),132,y,9,muted);if(lineIndex===0){doc.setFontSize(9);doc.setTextColor(...green);doc.text(money(Math.round((Number(item.amount)||0)*100)),186,y,{align:'right'});}y+=5;}
