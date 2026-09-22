@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'invoice-studio-v1';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const blankItem = () => ({id:uid(),description:'',date:today(),amount:''});
+const blankItem = () => ({id:uid(),description:'',dates:[today()],amount:''});
 const blankInvoice = () => ({number:`INV-${new Date().getFullYear()}-001`,issueDate:today(),dueDate:'',recipientId:'',items:[blankItem()],notes:''});
 let state = {business:{name:'',email:'',address:''},recipients:[],invoice:blankInvoice()};
 let storageAvailable = true;
@@ -15,6 +15,7 @@ try {
     if(!saved.business || !Array.isArray(saved.recipients) || !saved.invoice || !Array.isArray(saved.invoice.items)) throw new Error('Invalid saved data');
     const {taxRate, currency, ...savedInvoice}=saved.invoice;
     state={business:{...state.business,...saved.business},recipients:saved.recipients,invoice:{...state.invoice,...savedInvoice}};
+    state.invoice.items=state.invoice.items.map(item=>{const {date,...rest}=item;return {...rest,dates:Array.isArray(item.dates)&&item.dates.length?item.dates:[date||'']};});
   }
 } catch { storageAvailable=false; notice('Saved data could not be loaded. You can still create and download an invoice, but this session may not be saved.'); }
 function save() {
@@ -55,12 +56,22 @@ function renderItems() {
   $('items').replaceChildren();
   state.invoice.items.forEach((item,index)=>{
     const row=document.createElement('div');row.className='item-row';
-    for(const [key,title,type] of [['description','Description','text'],['date','Date','date'],['amount','Final amount','number']]) {
+    for(const [key,title,type] of [['description','Description','text'],['amount','Final amount','number']]) {
       const label=document.createElement('label');label.textContent=title;const input=document.createElement('input');input.type=type;input.value=item[key];input.setAttribute('aria-label',`${title}, item ${index+1}`);
       if(key==='amount'){input.step='0.01';input.min='0';input.max='999999999';input.placeholder='0.00';}
       if(key==='description'){input.placeholder='e.g. Design services';input.maxLength=4000;}
       input.oninput=()=>{item[key]=input.value;changed();};label.append(input);row.append(label);
     }
+    const dates=document.createElement('div');dates.className='item-dates';
+    const heading=document.createElement('span');heading.className='date-heading';heading.textContent='Dates';dates.append(heading);
+    item.dates.forEach((value,dateIndex)=>{
+      const dateRow=document.createElement('div');dateRow.className='date-row';
+      const input=document.createElement('input');input.type='date';input.value=value;input.setAttribute('aria-label',`Date ${dateIndex+1}, item ${index+1}`);
+      input.oninput=()=>{item.dates[dateIndex]=input.value;changed();};dateRow.append(input);
+      if(item.dates.length>1){const removeDate=document.createElement('button');removeDate.type='button';removeDate.className='icon-button';removeDate.textContent='×';removeDate.setAttribute('aria-label',`Remove date ${dateIndex+1}, item ${index+1}`);removeDate.onclick=()=>{item.dates.splice(dateIndex,1);renderItems();changed();};dateRow.append(removeDate);}
+      dates.append(dateRow);
+    });
+    const addDate=document.createElement('button');addDate.type='button';addDate.className='text-button add-date';addDate.textContent='＋ Add date';addDate.onclick=()=>{item.dates.push('');renderItems();changed();row.querySelectorAll('.date-row input')[item.dates.length-1].focus();};dates.append(addDate);row.append(dates);
     const remove=document.createElement('button');remove.className='icon-button';remove.textContent='×';remove.setAttribute('aria-label',`Remove item ${index+1}`);remove.onclick=()=>{state.invoice.items=state.invoice.items.filter(i=>i.id!==item.id);renderItems();changed();};row.append(remove);$('items').append(row);
   });
 }
@@ -92,10 +103,10 @@ function buildPdf() {
   text('FROM',20,y,8,muted,true);y+=7;lines(state.business.name||'Your business name',20,170,13,green);lines(state.business.email,20,170,9);lines(state.business.address,20,170,9);y+=8;
   room(30);text('BILL TO',20,y,8,muted,true);text('ISSUED',126,y,8,muted,true);text('DUE',164,y,8,muted,true);text(dateLabel(inv.issueDate),126,y+7,9);text(dateLabel(inv.dueDate),164,y+7,9);y+=7;
   lines(recipient?.name||'Recipient name',20,95,12,green);lines(recipient?.email,20,95,9);lines(recipient?.address,20,95,9);y+=10;
-  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATE',132,y+6.5,8,[255,255,255],true);text('AMOUNT',158,y+6.5,8,[255,255,255],true);y+=17;}
+  function tableHeader(){room(20);doc.setFillColor(...green);doc.rect(20,y,170,10,'F');text('DESCRIPTION',24,y+6.5,8,[255,255,255],true);text('DATES',132,y+6.5,8,[255,255,255],true);text('AMOUNT',158,y+6.5,8,[255,255,255],true);y+=17;}
   tableHeader();
-  for(const item of inv.items){doc.setFontSize(10);doc.setFont('helvetica','normal');const description=doc.splitTextToSize(item.description||'Item description',100);let first=true;
-    for(const line of description){if(y+8>272){doc.addPage();y=23;tableHeader();}text(line,24,y,10);if(first){text(dateLabel(item.date),132,y,9,muted);doc.setFontSize(9);doc.setTextColor(...green);doc.text(money(Math.round((Number(item.amount)||0)*100)),186,y,{align:'right'});first=false;}y+=5;}
+  for(const item of inv.items){doc.setFontSize(10);doc.setFont('helvetica','normal');const description=doc.splitTextToSize(item.description||'Item description',100);const dates=item.dates||[item.date||''];const rowLines=Math.max(description.length,dates.length);
+    for(let lineIndex=0;lineIndex<rowLines;lineIndex++){if(y+8>272){doc.addPage();y=23;tableHeader();}if(description[lineIndex])text(description[lineIndex],24,y,10);if(dates[lineIndex])text(dateLabel(dates[lineIndex]),132,y,9,muted);if(lineIndex===0){doc.setFontSize(9);doc.setTextColor(...green);doc.text(money(Math.round((Number(item.amount)||0)*100)),186,y,{align:'right'});}y+=5;}
     y+=5;doc.setDrawColor(227,232,226);doc.line(20,y-3,190,y-3);y+=4;
   }
   room(20);y+=4;const t=totals();doc.setFillColor(238,245,239);doc.rect(112,y-6,78,12,'F');text('Total due',116,y,11,green,true);doc.setFontSize(12);doc.text(money(t.total),186,y,{align:'right'});y+=11;
@@ -110,7 +121,7 @@ $('download').onclick=()=>{
   if(!state.business.name.trim()){notice('Add your business name before downloading.');$('business-name').focus();return;}
   if(!state.recipients.some(r=>r.id===state.invoice.recipientId)){notice('Select or add a recipient before downloading.');$('add-recipient').focus();return;}
   if(!state.invoice.number.trim()||!state.invoice.issueDate){notice('Enter an invoice number and issue date before downloading.');return;}
-  if(!state.invoice.items.length||state.invoice.items.some(i=>!i.description.trim()||!i.date||i.amount===''||!Number.isFinite(Number(i.amount))||Number(i.amount)<0||Number(i.amount)>999999999)){notice('Each line item needs a description, date, and amount between 0 and 999,999,999.');return;}
+  if(!state.invoice.items.length||state.invoice.items.some(i=>!i.description.trim()||!Array.isArray(i.dates)||!i.dates.length||i.dates.some(date=>!date)||i.amount===''||!Number.isFinite(Number(i.amount))||Number(i.amount)<0||Number(i.amount)>999999999)){notice('Each line item needs a description, one or more dates, and an amount between 0 and 999,999,999.');return;}
   if(state.invoice.dueDate&&state.invoice.dueDate<state.invoice.issueDate){notice('The due date must be on or after the issue date.');$('due-date').focus();return;}
   if(storageAvailable)notice('');try{const pdf=buildPdf();pdf.save(`${state.invoice.number.replace(/[^a-z0-9_-]/gi,'_')||'invoice'}.pdf`);}catch(error){notice('The PDF could not be downloaded. Please reload and try again.');console.error(error);}
 };
